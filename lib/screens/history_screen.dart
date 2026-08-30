@@ -3,10 +3,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../models/installed_app.dart';
+import '../models/conversation_summary.dart';
 import '../models/notification_item.dart';
 import '../services/incognito_channel.dart';
 import '../widgets/app_filter_tabs.dart';
+import '../widgets/conversation_tile.dart';
 import '../widgets/notification_tile.dart';
+import 'conversation_thread_screen.dart';
 import 'notification_detail_screen.dart';
 import 'settings_screen.dart';
 
@@ -289,32 +292,61 @@ class _HistoryScreenState extends State<HistoryScreen> {
         Expanded(
           child: filtered.isEmpty
               ? _buildEmptyState()
-              : ListView.separated(
-                  itemCount: filtered.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(height: 1),
-                  itemBuilder: (context, index) {
-                    final item = filtered[index];
-
-                    return NotificationTile(
-                      item: item,
-                      onDelete: () => _deleteItem(item),
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                NotificationDetailScreen(
-                              item: item,
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
+              : (_selectedPackage != null
+                  ? _buildConversationList(filtered)
+                  : _buildFlatList(filtered)),
         ),
       ],
+    );
+  }
+
+  /// Vue groupée par contact/conversation, affichée quand une app précise
+  /// est sélectionnée dans les onglets (comme Unseen).
+  Widget _buildConversationList(List<NotificationItem> filtered) {
+    final conversations = buildConversations(filtered);
+
+    return ListView.separated(
+      itemCount: conversations.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final conversation = conversations[index];
+
+        return ConversationTile(
+          conversation: conversation,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ConversationThreadScreen(conversation: conversation),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Vue chronologique classique, toutes apps mélangées (onglet "Tout").
+  Widget _buildFlatList(List<NotificationItem> filtered) {
+    return ListView.separated(
+      itemCount: filtered.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final item = filtered[index];
+
+        return NotificationTile(
+          item: item,
+          onDelete: () => _deleteItem(item),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NotificationDetailScreen(item: item),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
