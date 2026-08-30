@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../models/conversation_summary.dart';
@@ -5,34 +7,24 @@ import '../utils/relative_time.dart';
 
 class ConversationTile extends StatelessWidget {
   final ConversationSummary conversation;
+  final Uint8List? appIcon;
   final VoidCallback onTap;
 
   const ConversationTile({
     super.key,
     required this.conversation,
+    required this.appIcon,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final latest = conversation.latest;
-    final unreadCount = conversation.items.length;
+    final messageCount = conversation.items.length;
 
     return ListTile(
       onTap: onTap,
-      leading: CircleAvatar(
-        radius: 24,
-        backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        child: Text(
-          conversation.contactName.isNotEmpty
-              ? conversation.contactName[0].toUpperCase()
-              : '?',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.onPrimaryContainer,
-          ),
-        ),
-      ),
+      leading: _buildAvatar(context),
       title: Text(
         conversation.contactName,
         maxLines: 1,
@@ -52,7 +44,7 @@ class ConversationTile extends StatelessWidget {
             formatRelativeTime(latest.timestamp),
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          if (unreadCount > 1) ...[
+          if (messageCount > 1) ...[
             const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -61,7 +53,7 @@ class ConversationTile extends StatelessWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '$unreadCount',
+                '$messageCount',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onPrimary,
                   fontSize: 11,
@@ -71,6 +63,37 @@ class ConversationTile extends StatelessWidget {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvatar(BuildContext context) {
+    if (appIcon != null) {
+      return ClipOval(
+        child: Image.memory(
+          appIcon!,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _letterAvatar(context),
+        ),
+      );
+    }
+    return _letterAvatar(context);
+  }
+
+  Widget _letterAvatar(BuildContext context) {
+    return CircleAvatar(
+      radius: 24,
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      child: Text(
+        conversation.contactName.isNotEmpty
+            ? conversation.contactName[0].toUpperCase()
+            : '?',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Theme.of(context).colorScheme.onPrimaryContainer,
+        ),
       ),
     );
   }

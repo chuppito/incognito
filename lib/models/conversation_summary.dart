@@ -20,12 +20,9 @@ class ConversationSummary {
   NotificationItem get latest => items.first;
 }
 
-/// Certaines apps (WhatsApp notamment) ajoutent un compteur au titre quand
-/// les messages non lus s'accumulent, ex. "Infos CIS LGS (78 messages)" ou
-/// "Marie (3)". On retire ce suffixe pour que le regroupement reste stable
-/// dans le temps : sinon la même conversation se scinde en plusieurs lignes
-/// à chaque fois que le compteur change.
-String _cleanContactName(String title) {
+/// Nettoie les compteurs ajoutés par certaines messageries aux titres,
+/// par exemple "Marie (3)" ou "Infos CIS LGS (78 messages)".
+String cleanContactName(String title) {
   final cleaned = title
       .replaceAll(
         RegExp(r'\s*\(\d+(\s*messages?)?\)\s*$', caseSensitive: false),
@@ -35,31 +32,73 @@ String _cleanContactName(String title) {
   return cleaned.isNotEmpty ? cleaned : title.trim();
 }
 
-/// Regroupe une liste d'items (déjà triée du plus récent au plus ancien)
-/// par conversation. On priorise le nom de contact nettoyé (stable dans le
-/// temps) plutôt que `conversationKey` (le groupKey Android peut changer
-/// d'une notification à l'autre pour un même contact).
+String _normalizeName(String value) {
+  return value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+}
+
+/// Regroupe les notifications par contact/conversation.
+///
+/// Stratégie robuste :
+/// - le nom nettoyé est utilisé pour garder ensemble les notifications d'un
+///   même contact lorsque Android change son groupKey ;
+/// - si plusieurs conversationKey distinctes existent pour le même nom,
+///   elles sont séparées afin d'éviter de fusionner deux conversations portant
+///   le même nom (par exemple deux groupes ayant le même titre) ;
+/// - si aucun nom exploitable n'est disponible, conversationKey est utilisé ;
+/// - les conversations restent ordonnées selon leur dernière notification.
 List<ConversationSummary> buildConversations(List<NotificationItem> items) {
+  final nameKeys = <String, Set<String>>{};
+
+  for (final item in items) {
+    final rawName = item.title.isNotEmpty ? item.title : item.appName;
+    final name = cleanContactName(rawName);
+    final normalizedName = _normalizeName(name);
+
+    if (normalizedName.isEmpty) continue;
+
+    final base = '${item.packageName}|name:$normalizedName';
+    final conversationKey = item.conversationKey.trim();
+
+    if (conversationKey.isNotEmpty) {
+      nameKeys.putIfAbsent(base, () => <String>{}).add(conversationKey);
+    } else {
+      nameKeys.putIfAbsent(base, () => <String>());
+    }
+  }
+
   final grouped = <String, List<NotificationItem>>{};
   final order = <String>[];
   final displayNames = <String, String>{};
 
   for (final item in items) {
     final rawName = item.title.isNotEmpty ? item.title : item.appName;
-    final cleanedName = _cleanContactName(rawName);
+    final name = cleanContactName(rawName);
+    final normalizedName = _normalizeName(name);
+    final base = '${item.packageName}|name:$normalizedName';
+    final keys = nameKeys[base] ?? <String>{};
+    final conversationKey = item.conversationKey.trim();
 
-    final key = cleanedName.isNotEmpty
-        ? '${item.packageName}|name:${cleanedName.toLowerCase()}'
-        : (item.conversationKey.isNotEmpty
-            ? item.conversationKey
-            : '${item.packageName}|id:${item.id}');
-
-    if (!grouped.containsKey(key)) {
-      grouped[key] = [];
-      order.add(key);
-      displayNames[key] = cleanedName.isNotEmpty ? cleanedName : rawName;
+    String key;
+    if (normalizedName.isNotEmpty && keys.length <= 1) {
+      // Cas normal : le nom suffit et reste stable même si Android modifie
+      // son groupKey.
+      key = base;
+    } else if (normalizedName.isNotEmpty && conversationKey.isNotEmpty) {
+      // Même nom mais plusieurs conversations distinctes : on les sépare.
+      key = '$base|conversation:$conversationKey';
+    } else if (conversationKey.isNotEmpty) {
+      key = '${item.packageName}|conversation:$conversationKey';
+    } else {
+      // Dernier recours : chaque notification sans identité exploitable reste
+      // indépendante.
+      key = '${item.packageName}|id:${item.id}';
     }
-    grouped[key]!.add(item);
+
+    grouped.putIfAbsent(key, () {
+      order.add(key);
+      displayNames[key] = name.isNotEmpty ? name : rawName;
+      return <NotificationItem>[];
+    }).add(item);
   }
 
   return order.map((key) {

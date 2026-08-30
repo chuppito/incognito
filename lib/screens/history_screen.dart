@@ -313,11 +313,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
         return ConversationTile(
           conversation: conversation,
+          appIcon: _installedAppsByPackage[conversation.packageName]?.icon,
           onTap: () {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => ConversationThreadScreen(conversation: conversation),
+                builder: (_) => ConversationThreadScreen(
+                    conversation: conversation,
+                    appIcon: _installedAppsByPackage[conversation.packageName]?.icon,
+                  ),
               ),
             );
           },
