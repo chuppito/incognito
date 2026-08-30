@@ -30,6 +30,18 @@ android {
     }
 
     signingConfigs {
+        // Clé debug FIXE, committée dans le repo (android/keystores/debug.keystore).
+        // Sans ça, chaque run GitHub Actions générerait une nouvelle clé debug
+        // aléatoire, ce qui change la signature de l'APK à chaque build : il faut
+        // alors désinstaller l'ancienne version pour installer la nouvelle, et
+        // Android révoque l'accès aux notifications à chaque réinstallation.
+        getByName("debug") {
+            storeFile = rootProject.file("keystores/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+
         create("release") {
             val keystorePropertiesFile = rootProject.file("key.properties")
             if (keystorePropertiesFile.exists()) {
@@ -45,8 +57,6 @@ android {
 
     buildTypes {
         release {
-            // Signe avec ta clé (upload-keystore.jks) si android/key.properties existe,
-            // sinon retombe sur la clé debug pour pouvoir quand même builder.
             signingConfig = if (rootProject.file("key.properties").exists())
                 signingConfigs.getByName("release")
             else
