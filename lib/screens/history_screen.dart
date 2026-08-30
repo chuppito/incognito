@@ -104,24 +104,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
     final granted =
         await _channel.isNotificationAccessGranted();
 
-    // On recharge également les applications surveillées.
-    // Cela permet de prendre immédiatement en compte une
-    // modification faite dans les réglages.
-    final apps = await _channel.getInstalledApps();
-    final listened = await _channel.getListenedApps();
-
     if (!mounted) return;
 
     setState(() {
       _items = history;
 
       _accessGranted = granted;
-
-      _installedAppsByPackage = {
-        for (final app in apps) app.packageName: app,
-      };
-
-      _listenedApps = listened;
 
       _loading = false;
 
