@@ -88,6 +88,11 @@ class MainActivity : FlutterActivity() {
                     result.success(store.clearForPackage(packageName))
                 }
 
+                "openApp" -> {
+                    val packageName = call.arguments as String
+                    result.success(openApp(packageName))
+                }
+
                 else -> result.notImplemented()
             }
         }
@@ -139,6 +144,13 @@ class MainActivity : FlutterActivity() {
         }
 
         return result.sortedBy { (it["appName"] as String).lowercase() }
+    }
+    
+    private fun openApp(packageName: String): Boolean {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return false
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(launchIntent)
+        return true
     }
 
     private fun drawableToBase64(drawable: Drawable): String {
