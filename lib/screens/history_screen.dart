@@ -2,12 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../models/installed_app.dart';
 import '../models/notification_item.dart';
 import '../services/incognito_channel.dart';
 import '../widgets/app_filter_tabs.dart';
 import '../widgets/notification_tile.dart';
-import 'settings_screen.dart';
 import 'notification_detail_screen.dart';
+import 'settings_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -20,44 +21,118 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final _channel = IncognitoChannel.instance;
 
   List<NotificationItem> _items = [];
-  Map<String, Uint8List?> _iconsByPackage = {};
+
+  /// Toutes les applications installées, indexées par package.
+  Map<String, InstalledApp> _installedAppsByPackage = {};
+
+  /// Applications actuellement sélectionnées dans
+  /// "Applications à écouter".
+  Set<String> _listenedApps = {};
+
   bool _loading = true;
   bool? _accessGranted;
-  String? _selectedPackage; // null = "Tout"
+
+  /// null = "Tout"
+  String? _selectedPackage;
 
   @override
   void initState() {
     super.initState();
+
     _channel.setOnNotificationReceived((item) {
-      setState(() => _items = [item, ..._items]);
+      if (!mounted) return;
+
+      setState(() {
+        _items = [item, ..._items];
+      });
     });
+
     _init();
   }
 
   Future<void> _init() async {
-    final granted = await _channel.isNotificationAccessGranted();
-    setState(() => _accessGranted = granted);
-    await _loadIcons();
+    final granted =
+        await _channel.isNotificationAccessGranted();
+
+    if (!mounted) return;
+
+    setState(() {
+      _accessGranted = granted;
+    });
+
+    await _loadApps();
     await _refresh();
   }
 
-  Future<void> _loadIcons() async {
-    final apps = await _channel.getInstalledApps();
+  /// Charge les applications installées ainsi que celles
+  /// actuellement surveillées.
+  Future<void> _loadApps() async {
+    final results = await Future.wait([
+      _channel.getInstalledApps(),
+      _channel.getListenedApps(),
+    ]);
+
+    if (!mounted) return;
+
+    final apps = results[0] as List<InstalledApp>;
+    final listened = results[1] as Set<String>;
+
     setState(() {
-      _iconsByPackage = {for (final a in apps) a.packageName: a.icon};
+      _installedAppsByPackage = {
+        for (final app in apps) app.packageName: app,
+      };
+
+      _listenedApps = listened;
+
+      // Si l'application actuellement sélectionnée
+      // n'est plus surveillée, retour à "Tout".
+      if (_selectedPackage != null &&
+          !_listenedApps.contains(_selectedPackage)) {
+        _selectedPackage = null;
+      }
     });
   }
 
   Future<void> _refresh() async {
-    setState(() => _loading = true);
+    if (!mounted) return;
+
+    setState(() {
+      _loading = true;
+    });
+
     final history = await _channel.getHistory();
-    final granted = await _channel.isNotificationAccessGranted();
+    final granted =
+        await _channel.isNotificationAccessGranted();
+
+    // On recharge également les applications surveillées.
+    // Cela permet de prendre immédiatement en compte une
+    // modification faite dans les réglages.
+    final apps = await _channel.getInstalledApps();
+    final listened = await _channel.getListenedApps();
+
+    if (!mounted) return;
+
     setState(() {
       _items = history;
+
       _accessGranted = granted;
+
+      _installedAppsByPackage = {
+        for (final app in apps) app.packageName: app,
+      };
+
+      _listenedApps = listened;
+
       _loading = false;
-      // Si l'app sélectionnée n'a plus aucune notif, on revient sur "Tout"
-      if (_selectedPackage != null && !_items.any((i) => i.packageName == _selectedPackage)) {
+
+      // IMPORTANT :
+      // On ne supprime PAS la sélection simplement parce
+      // qu'une application n'a aucune notification.
+      //
+      // On revient à "Tout" uniquement si l'application
+      // n'est plus surveillée.
+      if (_selectedPackage != null &&
+          !_listenedApps.contains(_selectedPackage)) {
         _selectedPackage = null;
       }
     });
@@ -65,7 +140,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _deleteItem(NotificationItem item) async {
     await _channel.deleteNotification(item.id);
-    setState(() => _items.removeWhere((e) => e.id == item.id));
+
+    if (!mounted) return;
+
+    setState(() {
+      _items.removeWhere((e) => e.id == item.id);
+    });
   }
 
   Future<void> _confirmClearAll() async {
@@ -73,15 +153,28 @@ class _HistoryScreenState extends State<HistoryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Tout effacer ?'),
-        content: const Text('L\'historique des notifications capturées sera définitivement supprimé.'),
+        content: const Text(
+          'L\'historique des notifications capturées '
+          'sera définitivement supprimé.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Annuler')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Effacer')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Effacer'),
+          ),
         ],
       ),
     );
+
     if (confirmed == true) {
       await _channel.clearHistory();
+
+      if (!mounted) return;
+
       setState(() {
         _items = [];
         _selectedPackage = null;
@@ -89,26 +182,43 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
-  /// Une entrée par app distincte présente dans l'historique, la plus
-  /// récente en premier (les items sont déjà triés desc par timestamp).
+  /// Construit la liste des filtres à partir des applications
+  /// SURVEILLÉES, et non plus à partir de l'historique.
+  ///
+  /// Cela signifie qu'une application surveillée apparaît
+  /// même si elle n'a encore reçu aucune notification.
   List<AppFilterEntry> get _appTabs {
-    final seen = <String>{};
     final entries = <AppFilterEntry>[];
-    for (final item in _items) {
-      if (seen.add(item.packageName)) {
-        entries.add(AppFilterEntry(
-          packageName: item.packageName,
-          appName: item.appName,
-          icon: _iconsByPackage[item.packageName],
-        ));
+
+    // On parcourt les applications installées afin de conserver
+    // leur ordre naturel et leurs informations complètes.
+    for (final app in _installedAppsByPackage.values) {
+      if (!_listenedApps.contains(app.packageName)) {
+        continue;
       }
+
+      entries.add(
+        AppFilterEntry(
+          packageName: app.packageName,
+          appName: app.appName,
+          icon: app.icon,
+        ),
+      );
     }
+
     return entries;
   }
 
   List<NotificationItem> get _filteredItems {
-    if (_selectedPackage == null) return _items;
-    return _items.where((i) => i.packageName == _selectedPackage).toList();
+    if (_selectedPackage == null) {
+      return _items;
+    }
+
+    return _items
+        .where(
+          (item) => item.packageName == _selectedPackage,
+        )
+        .toList();
   }
 
   @override
@@ -123,15 +233,23 @@ class _HistoryScreenState extends State<HistoryScreen> {
             onPressed: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
               );
-              await _loadIcons();
-              _refresh();
+
+              // Recharge les applications surveillées après
+              // le retour des réglages.
+              await _loadApps();
+              await _refresh();
             },
           ),
+
           if (_items.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.delete_sweep_outlined),
+              icon: const Icon(
+                Icons.delete_sweep_outlined,
+              ),
               tooltip: 'Tout effacer',
               onPressed: _confirmClearAll,
             ),
@@ -146,72 +264,64 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildBody() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_accessGranted == false) {
-      return _AccessRequestBanner(onOpenSettings: () async {
-        await _channel.openNotificationAccessSettings();
-      });
-    }
-
-    if (_items.isEmpty) {
-      return LayoutBuilder(
-        builder: (context, constraints) => SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: constraints.maxHeight),
-            child: const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: Text(
-                  'Aucune notification capturée pour l\'instant.\n'
-                  'Sélectionne les apps à écouter via l\'icône de réglages en haut.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
-            ),
-          ),
-        ),
+      return const Center(
+        child: CircularProgressIndicator(),
       );
     }
 
+    if (_accessGranted == false) {
+      return _AccessRequestBanner(
+        onOpenSettings: () async {
+          await _channel.openNotificationAccessSettings();
+        },
+      );
+    }
+
+    final tabs = _appTabs;
     final filtered = _filteredItems;
 
     return Column(
       children: [
-        AppFilterTabs(
-          apps: _appTabs,
-          selectedPackage: _selectedPackage,
-          onSelected: (pkg) => setState(() => _selectedPackage = pkg),
-        ),
-        const Divider(height: 1),
+        // Les applications surveillées sont affichées même
+        // lorsqu'il n'existe encore aucune notification.
+        if (tabs.isNotEmpty)
+          AppFilterTabs(
+            apps: tabs,
+            selectedPackage: _selectedPackage,
+            onSelected: (pkg) {
+              setState(() {
+                _selectedPackage = pkg;
+              });
+            },
+          ),
+
+        if (tabs.isNotEmpty)
+          const Divider(height: 1),
+
         Expanded(
           child: filtered.isEmpty
-              ? const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Text(
-                      'Aucune notification pour cette application.',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                )
+              ? _buildEmptyState()
               : ListView.separated(
                   itemCount: filtered.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final item = filtered[index];
+
                     return NotificationTile(
                       item: item,
                       onDelete: () => _deleteItem(item),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => NotificationDetailScreen(item: item),
-                        ),
-                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                NotificationDetailScreen(
+                              item: item,
+                            ),
+                          ),
+                        );
+                      },
                     );
                   },
                 ),
@@ -219,12 +329,56 @@ class _HistoryScreenState extends State<HistoryScreen> {
       ],
     );
   }
+
+  Widget _buildEmptyState() {
+    final hasApps = _appTabs.isNotEmpty;
+
+    String message;
+
+    if (_items.isEmpty) {
+      if (hasApps) {
+        message =
+            'Aucune notification capturée pour l\'instant.\n\n'
+            'Les notifications des applications surveillées '
+            'apparaîtront ici.';
+      } else {
+        message =
+            'Aucune application surveillée.\n\n'
+            'Sélectionne les applications à écouter via '
+            'l\'icône de réglages en haut.';
+      }
+    } else if (_selectedPackage != null) {
+      final selectedApp =
+          _installedAppsByPackage[_selectedPackage];
+
+      message =
+          'Aucune notification pour '
+          '${selectedApp?.appName ?? 'cette application'}.';
+    } else {
+      message = 'Aucune notification capturée pour l\'instant.';
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.grey,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _AccessRequestBanner extends StatelessWidget {
   final VoidCallback onOpenSettings;
 
-  const _AccessRequestBanner({required this.onOpenSettings});
+  const _AccessRequestBanner({
+    required this.onOpenSettings,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -234,17 +388,26 @@ class _AccessRequestBanner extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.notifications_off_outlined, size: 48, color: Colors.grey),
+            const Icon(
+              Icons.notifications_off_outlined,
+              size: 48,
+              color: Colors.grey,
+            ),
             const SizedBox(height: 16),
             const Text(
-              'Incognito a besoin de l\'accès aux notifications pour fonctionner.',
+              'Incognito a besoin de l\'accès aux notifications '
+              'pour fonctionner.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             const Text(
-              'Active "Incognito" dans la liste des accès aux notifications.',
+              'Active "Incognito" dans la liste des accès '
+              'aux notifications.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey, fontSize: 13),
+              style: TextStyle(
+                color: Colors.grey,
+                fontSize: 13,
+              ),
             ),
             const SizedBox(height: 20),
             FilledButton(
