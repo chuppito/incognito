@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/notification_item.dart';
+import '../services/incognito_channel.dart';
 
 class NotificationDetailScreen extends StatelessWidget {
   final NotificationItem item;
@@ -97,6 +98,20 @@ class NotificationDetailScreen extends StatelessWidget {
                   ),
                 ),
               ),
+              const SizedBox(height: 18),
+              Center(
+                child: OutlinedButton.icon(
+                  onPressed: () => _openSourceApp(context),
+                  icon: const Icon(Icons.reply_rounded, size: 18),
+                  label: Text('Répondre dans ${item.appName}'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
+              ),
               if (item.conversationKey.isNotEmpty) ...[
                 const SizedBox(height: 14),
                 Row(
@@ -119,5 +134,15 @@ class NotificationDetailScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openSourceApp(BuildContext context) async {
+    final opened = await IncognitoChannel.instance.openApp(item.packageName);
+    if (!context.mounted) return;
+    if (!opened) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${item.appName} est introuvable ou n\'est plus installée.')),
+      );
+    }
   }
 }
