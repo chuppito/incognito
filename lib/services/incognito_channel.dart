@@ -77,4 +77,11 @@ class IncognitoChannel {
   Future<void> clearHistoryForPackage(String packageName) async {
     await _channel.invokeMethod('clearHistoryForPackage', packageName);
   }
+
+  /// Ouvre l'app source (ex. WhatsApp) pour que l'utilisateur puisse répondre.
+  /// Retourne false si l'app n'est plus installée.
+  Future<bool> openApp(String packageName) async {
+    final opened = await _channel.invokeMethod<bool>('openApp', packageName);
+    return opened ?? false;
+  }
 }
