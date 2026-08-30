@@ -7,7 +7,11 @@ class AppFilterEntry {
   final String appName;
   final Uint8List? icon;
 
-  AppFilterEntry({required this.packageName, required this.appName, required this.icon});
+  AppFilterEntry({
+    required this.packageName,
+    required this.appName,
+    required this.icon,
+  });
 }
 
 class AppFilterTabs extends StatelessWidget {
@@ -28,24 +32,44 @@ class AppFilterTabs extends StatelessWidget {
       height: 84,
       child: ListView(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 8,
+        ),
         children: [
           _FilterTab(
             label: 'Tout',
             selected: selectedPackage == null,
             onTap: () => onSelected(null),
-            child: const Icon(Icons.all_inbox_rounded, color: Colors.white, size: 22),
+            child: const Icon(
+              Icons.all_inbox_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
           ),
+
           for (final app in apps)
             _FilterTab(
               label: app.appName,
               selected: selectedPackage == app.packageName,
               onTap: () => onSelected(app.packageName),
               child: app.icon != null
-                  ? ClipOval(child: Image.memory(app.icon!, width: 40, height: 40, fit: BoxFit.cover))
+                  ? ClipOval(
+                      child: Image.memory(
+                        app.icon!,
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                      ),
+                    )
                   : Text(
-                      app.appName.isNotEmpty ? app.appName[0].toUpperCase() : '?',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                      app.appName.isNotEmpty
+                          ? app.appName[0].toUpperCase()
+                          : '?',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
             ),
         ],
@@ -86,7 +110,10 @@ class _FilterTab extends StatelessWidget {
                 shape: BoxShape.circle,
                 color: selected ? color : Colors.grey.shade400,
                 border: selected
-                    ? Border.all(color: color, width: 2)
+                    ? Border.all(
+                        color: color,
+                        width: 2,
+                      )
                     : null,
               ),
               child: child,
@@ -101,8 +128,10 @@ class _FilterTab extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: selected ? FontWeight.bold : FontWeight.normal,
-                  color: selected ? color : Colors.grey.shade600,
+                  fontWeight:
+                      selected ? FontWeight.bold : FontWeight.normal,
+                  color:
+                      selected ? color : Colors.grey.shade600,
                 ),
               ),
             ),
