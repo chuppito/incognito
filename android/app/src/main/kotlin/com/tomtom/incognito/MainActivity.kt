@@ -42,7 +42,10 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "getInstalledApps" -> {
-                    result.success(getInstalledApps())
+                    Thread {
+                        val apps = getInstalledApps()
+                        runOnUiThread { result.success(apps) }
+                    }.start()
                 }
 
                 "getListenedApps" -> {
