@@ -148,14 +148,27 @@ class NotificationListener : NotificationListenerService() {
     }
 
     private fun extractBestTitle(extras: Bundle): String? {
-        val titleBig = extras.getCharSequence(Notification.EXTRA_TITLE_BIG)?.toString()?.trim()
+        // Pour les messageries, EXTRA_CONVERSATION_TITLE est particulièrement
+        // important : dans un groupe WhatsApp, EXTRA_TITLE peut contenir le nom
+        // de l'expéditeur alors que EXTRA_CONVERSATION_TITLE contient le nom du
+        // groupe. On le privilégie donc pour permettre le vrai regroupement.
+        val conversationTitle = extras
+            .getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)
+            ?.toString()
+            ?.trim()
+        if (!conversationTitle.isNullOrBlank()) return conversationTitle
+
+        val titleBig = extras
+            .getCharSequence(Notification.EXTRA_TITLE_BIG)
+            ?.toString()
+            ?.trim()
         if (!titleBig.isNullOrBlank()) return titleBig
 
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+        val title = extras
+            .getCharSequence(Notification.EXTRA_TITLE)
+            ?.toString()
+            ?.trim()
         if (!title.isNullOrBlank()) return title
-
-        val conversationTitle = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
-        if (!conversationTitle.isNullOrBlank()) return conversationTitle
 
         return null
     }
@@ -273,12 +286,20 @@ class NotificationListener : NotificationListenerService() {
         sbn: StatusBarNotification,
         extras: Bundle
     ): String? {
+        // Le titre de conversation est l'identifiant le plus utile pour les
+        // messageries modernes : pour un groupe WhatsApp, il permet de regrouper
+        // les messages de plusieurs participants sous le nom du même groupe.
+        val conversation = extras
+            .getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)
+            ?.toString()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
         val group = sbn.groupKey?.takeIf { it.isNotBlank() }
-        val conversation = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)
-            ?.toString()?.trim()?.takeIf { it.isNotBlank() }
+
         return when {
+            conversation != null -> "$packageName|conversation:${conversation.normalizeForCompare()}"
             group != null -> "$packageName|group:$group"
-            conversation != null -> "$packageName|conversation:$conversation"
             else -> null
         }
     }
