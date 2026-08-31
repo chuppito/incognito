@@ -52,6 +52,20 @@ class IncognitoChannel {
     return (raw ?? []).cast<String>().toSet();
   }
 
+  Future<bool> isIncognitoNotificationsEnabled() async {
+    final enabled = await _channel.invokeMethod<bool>(
+      'isIncognitoNotificationsEnabled',
+    );
+    return enabled ?? false;
+  }
+
+  Future<void> setIncognitoNotificationsEnabled(bool enabled) async {
+    await _channel.invokeMethod(
+      'setIncognitoNotificationsEnabled',
+      enabled,
+    );
+  }
+
   Future<void> setSilentApps(Set<String> packages) async {
     await _channel.invokeMethod('setSilentApps', packages.toList());
   }

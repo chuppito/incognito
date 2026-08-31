@@ -62,7 +62,7 @@ List<ConversationSummary> buildConversations(List<NotificationItem> items) {
     if (conversationKey.isNotEmpty) {
       nameKeys.putIfAbsent(base, () => <String>{}).add(conversationKey);
     } else {
-      nameKeys.putIfAbsent(base, () => <String>{});
+      nameKeys.putIfAbsent(base, () => <String>());
     }
   }
 

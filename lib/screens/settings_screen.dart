@@ -20,6 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _loading = true;
   String _query = '';
   bool _hideSystemApps = true;
+  bool _incognitoNotifications = false;
 
   @override
   void initState() {
@@ -33,11 +34,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _channel.getInstalledApps(),
       _channel.getListenedApps(),
       _channel.getSilentApps(),
+      _channel.isIncognitoNotificationsEnabled(),
     ]);
     setState(() {
       _apps = results[0] as List<InstalledApp>;
       _listened = results[1] as Set<String>;
       _silent = results[2] as Set<String>;
+      _incognitoNotifications = results[3] as bool;
       _loading = false;
     });
   }
@@ -62,6 +65,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     });
     await _channel.setSilentApps(_silent);
+  }
+
+  Future<void> _toggleIncognitoNotifications(bool value) async {
+    setState(() => _incognitoNotifications = value);
+    await _channel.setIncognitoNotificationsEnabled(value);
+
+    if (!mounted) return;
+    if (value) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Autorise les notifications si Android affiche une demande.',
+          ),
+        ),
+      );
+    }
   }
 
   List<InstalledApp> get _filteredApps {
@@ -89,8 +108,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                Card(
+                  margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  child: SwitchListTile(
+                    secondary: const Icon(Icons.notifications_active_outlined),
+                    title: const Text('Notifications Incognito'),
+                    subtitle: const Text(
+                      'Affiche une notification lorsqu’un nouveau message surveillé est capturé.',
+                    ),
+                    value: _incognitoNotifications,
+                    onChanged: _toggleIncognitoNotifications,
+                  ),
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                   child: TextField(
                     decoration: InputDecoration(
                       hintText: 'Rechercher une application',

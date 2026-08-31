@@ -32,7 +32,9 @@ class ConversationTile extends StatelessWidget {
         style: const TextStyle(fontWeight: FontWeight.w600),
       ),
       subtitle: Text(
-        latest.text.isNotEmpty ? latest.text : '(Notification sans texte)',
+        latest.text.isNotEmpty
+            ? '${conversation.appName} • ${latest.text}'
+            : '${conversation.appName} • (Notification sans texte)',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

@@ -1,6 +1,10 @@
 package com.tomtom.incognito
 
 import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +29,26 @@ class NotificationListener : NotificationListenerService() {
     }
 
     private val dedupeWindowMs = 2000L
+
+    private val incognitoChannelId = "captured_notifications"
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        createIncognitoNotificationChannel()
+    }
+
+    private fun createIncognitoNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java)
+        val channel = NotificationChannel(
+            incognitoChannelId,
+            "Notifications Incognito",
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = "Notifications générées par Incognito pour les applications surveillées"
+        }
+        manager.createNotificationChannel(channel)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -108,6 +132,15 @@ class NotificationListener : NotificationListenerService() {
                 "conversationKey" to (conversationKey ?: "")
             )
         )
+
+        if (prefs.isIncognitoNotificationsEnabled()) {
+            postIncognitoNotification(
+                id = id,
+                appName = appName,
+                title = title,
+                text = text
+            )
+        }
 
         if (prefs.isSilent(packageName)) {
             cancelNotification(sbn.key)
@@ -254,7 +287,49 @@ class NotificationListener : NotificationListenerService() {
         return trim().replace("\\s+".toRegex(), " ").lowercase()
     }
 
-    override fun onListenerConnected() {
-        super.onListenerConnected()
+    private fun postIncognitoNotification(
+        id: Long,
+        appName: String,
+        title: String?,
+        text: String?
+    ) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) return
+
+        createIncognitoNotificationChannel()
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        launchIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            id.toInt(),
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val displayTitle = title?.takeIf { it.isNotBlank() } ?: appName
+        val displayText = text?.takeIf { it.isNotBlank() } ?: "Nouvelle notification capturée"
+
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, incognitoChannelId)
+        } else {
+            Notification.Builder(this)
+        }
+
+        val notification = builder
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle("$appName • $displayTitle")
+            .setContentText(displayText)
+            .setStyle(Notification.BigTextStyle().bigText(displayText))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setCategory(Notification.CATEGORY_MESSAGE)
+            .build()
+
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify((id and 0x7fffffffL).toInt(), notification)
     }
 }

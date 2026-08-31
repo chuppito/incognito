@@ -33,4 +33,12 @@ class NotificationPrefs(context: Context) {
     fun isListened(packageName: String): Boolean = packageName in getListenedApps()
 
     fun isSilent(packageName: String): Boolean = packageName in getSilentApps()
+
+    /** Notifications générées par Incognito lorsqu'une notification surveillée est capturée. */
+    fun isIncognitoNotificationsEnabled(): Boolean =
+        prefs.getBoolean("incognitoNotificationsEnabled", false)
+
+    fun setIncognitoNotificationsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("incognitoNotificationsEnabled", enabled).apply()
+    }
 }

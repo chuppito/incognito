@@ -2,6 +2,7 @@ package com.tomtom.incognito
 
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
@@ -61,6 +62,25 @@ class MainActivity : FlutterActivity() {
 
                 "getSilentApps" -> {
                     result.success(prefs.getSilentApps().toList())
+                }
+
+                "isIncognitoNotificationsEnabled" -> {
+                    result.success(prefs.isIncognitoNotificationsEnabled())
+                }
+
+                "setIncognitoNotificationsEnabled" -> {
+                    val enabled = call.arguments as? Boolean ?: false
+                    prefs.setIncognitoNotificationsEnabled(enabled)
+                    if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                            PackageManager.PERMISSION_GRANTED) {
+                            requestPermissions(
+                                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                                1001
+                            )
+                        }
+                    }
+                    result.success(null)
                 }
 
                 "setSilentApps" -> {

@@ -292,16 +292,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
         Expanded(
           child: filtered.isEmpty
               ? _buildEmptyState()
-              : (_selectedPackage != null
-                  ? _buildConversationList(filtered)
-                  : _buildFlatList(filtered)),
+              : _buildConversationList(filtered),
         ),
       ],
     );
   }
 
-  /// Vue groupée par contact/conversation, affichée quand une app précise
-  /// est sélectionnée dans les onglets (comme Unseen).
+  /// Vue groupée par contact/conversation.
+  /// Elle est utilisée aussi dans l'onglet "Tout" : chaque conversation reste
+  /// séparée par application grâce à la clé package + conversation.
+
   Widget _buildConversationList(List<NotificationItem> filtered) {
     final conversations = buildConversations(filtered);
 
@@ -322,30 +322,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     conversation: conversation,
                     appIcon: _installedAppsByPackage[conversation.packageName]?.icon,
                   ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// Vue chronologique classique, toutes apps mélangées (onglet "Tout").
-  Widget _buildFlatList(List<NotificationItem> filtered) {
-    return ListView.separated(
-      itemCount: filtered.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, index) {
-        final item = filtered[index];
-
-        return NotificationTile(
-          item: item,
-          onDelete: () => _deleteItem(item),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => NotificationDetailScreen(item: item),
               ),
             );
           },
