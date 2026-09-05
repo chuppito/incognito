@@ -69,6 +69,10 @@ class NotificationListener : NotificationListenerService() {
         val text = extractFullText(extras)
         if (title.isNullOrBlank() && text.isNullOrBlank()) return
 
+        // WhatsApp publie aussi des notifications techniques qui ne sont pas
+        // des messages et ne doivent pas apparaître dans Incognito.
+        if (isIgnoredWhatsAppNotification(packageName, title, text)) return
+
         // groupKey est stable pour une conversation/notification groupée et
         // permet à l'UI de connaître l'origine conversationnelle sans exposer
         // de données supplémentaires.
@@ -133,8 +137,31 @@ class NotificationListener : NotificationListenerService() {
             )
         )
 
-        if (prefs.isIncognitoNotificationsEnabled()) {
-        
+        if (prefs.isIncognitoNotificationsEnabled() && !prefs.isSilent(packageName)) {
+            postIncognitoNotification(
+                id = id,
+                appName = appName,
+                title = title,
+                text = text
+            )
+        }
+    }
+
+    private fun isIgnoredWhatsAppNotification(
+        packageName: String,
+        title: String?,
+        text: String?
+    ): Boolean {
+        if (packageName != "com.whatsapp") return false
+
+        val combined = listOfNotNull(title, text)
+            .joinToString(" ")
+            .trim()
+            .lowercase()
+
+        return combined.contains("importation en cours") ||
+            combined.contains("recherche de nouveaux")
+    }
 
     private fun extractBestTitle(extras: Bundle): String? {
         // Pour les messageries, EXTRA_CONVERSATION_TITLE est particulièrement

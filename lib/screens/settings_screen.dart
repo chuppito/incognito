@@ -138,7 +138,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          'Écouter : capture dans l\'historique. Notif. : garde le bandeau système en plus.',
+                          'Écouter : capture dans l\'historique. Notif. : affiche aussi une notification Incognito.',
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ),
