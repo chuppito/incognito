@@ -134,18 +134,7 @@ class NotificationListener : NotificationListenerService() {
         )
 
         if (prefs.isIncognitoNotificationsEnabled()) {
-            postIncognitoNotification(
-                id = id,
-                appName = appName,
-                title = title,
-                text = text
-            )
-        }
-
-        if (prefs.isSilent(packageName)) {
-            cancelNotification(sbn.key)
-        }
-    }
+        
 
     private fun extractBestTitle(extras: Bundle): String? {
         // Pour les messageries, EXTRA_CONVERSATION_TITLE est particulièrement
