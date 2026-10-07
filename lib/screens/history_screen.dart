@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
 import '../models/installed_app.dart';
@@ -8,9 +6,7 @@ import '../models/notification_item.dart';
 import '../services/incognito_channel.dart';
 import '../widgets/app_filter_tabs.dart';
 import '../widgets/conversation_tile.dart';
-import '../widgets/notification_tile.dart';
 import 'conversation_thread_screen.dart';
-import 'notification_detail_screen.dart';
 import 'settings_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -20,7 +16,13 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen>
+    with WidgetsBindingObserver {
+  final _history = ValueNotifier<List<NotificationItem>>([]);
+  String _query = '';
+  bool _hasMore = true;
+  bool _loadingMore = false;
+  String? _error;
   final _channel = IncognitoChannel.instance;
 
   List<NotificationItem> _items = [];
@@ -41,12 +43,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _channel.setOnNotificationReceived((item) {
       if (!mounted) return;
 
       setState(() {
-        _items = [item, ..._items];
+        _items = [item, ..._items.where((e) => e.id != item.id)]
+          ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+        _history.value = List.of(_items);
       });
     });
 
@@ -54,8 +59,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _init() async {
-    final granted =
-        await _channel.isNotificationAccessGranted();
+    final granted = await _channel.isNotificationAccessGranted();
 
     if (!mounted) return;
 
@@ -103,40 +107,59 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _loading = true;
     });
 
-    final history = await _channel.getHistory();
-    final granted =
-        await _channel.isNotificationAccessGranted();
-
-    if (!mounted) return;
-
-    setState(() {
-      _items = history;
-
-      _accessGranted = granted;
-
-      _loading = false;
-
-      // IMPORTANT :
-      // On ne supprime PAS la sélection simplement parce
-      // qu'une application n'a aucune notification.
-      //
-      // On revient à "Tout" uniquement si l'application
-      // n'est plus surveillée.
-      if (_selectedPackage != null &&
-          !_listenedApps.contains(_selectedPackage)) {
-        _selectedPackage = null;
-      }
-    });
+    try {
+      final history = await _channel.getHistory();
+      final granted = await _channel.isNotificationAccessGranted();
+      if (!mounted) return;
+      setState(() {
+        _items = history;
+        _history.value = List.of(_items);
+        _accessGranted = granted;
+        _hasMore = history.length == 200;
+        _error = null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Impossible de charger l’historique. Réessaie.';
+        _loading = false;
+      });
+    }
   }
 
-  Future<void> _deleteItem(NotificationItem item) async {
-    await _channel.deleteNotification(item.id);
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    setState(() => _loadingMore = true);
+    try {
+      final page = await _channel.getHistory(offset: _items.length);
+      if (!mounted) return;
+      setState(() {
+        final ids = _items.map((e) => e.id).toSet();
+        _items.addAll(page.where((e) => !ids.contains(e.id)));
+        _history.value = List.of(_items);
+        _hasMore = page.length == 200;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible de charger la suite')));
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
 
-    if (!mounted) return;
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
 
-    setState(() {
-      _items.removeWhere((e) => e.id == item.id);
-    });
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _channel.setOnNotificationReceived((_) {});
+    _history.dispose();
+    super.dispose();
   }
 
   Future<void> _confirmClearAll() async {
@@ -168,6 +191,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
       setState(() {
         _items = [];
+        _history.value = [];
+        _hasMore = false;
         _selectedPackage = null;
       });
     }
@@ -235,7 +260,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
               await _refresh();
             },
           ),
-
           if (_items.isNotEmpty)
             IconButton(
               icon: const Icon(
@@ -269,10 +293,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
 
     final tabs = _appTabs;
-    final filtered = _filteredItems;
+    final filtered = _filteredItems
+        .where((item) =>
+            '${item.title} ${item.sender} ${item.text} ${item.appName}'
+                .toLowerCase()
+                .contains(_query.toLowerCase()))
+        .toList();
 
     return Column(
       children: [
+        Padding(
+            padding: const EdgeInsets.all(12),
+            child: TextField(
+                onChanged: (v) => setState(() => _query = v),
+                decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.search),
+                    hintText: 'Rechercher un contact ou un message',
+                    border: OutlineInputBorder(),
+                    isDense: true))),
         // Les applications surveillées sont affichées même
         // lorsqu'il n'existe encore aucune notification.
         if (tabs.isNotEmpty)
@@ -286,14 +324,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
             },
           ),
 
-        if (tabs.isNotEmpty)
-          const Divider(height: 1),
+        if (tabs.isNotEmpty) const Divider(height: 1),
 
+        if (_error != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: TextButton(onPressed: _refresh, child: Text(_error!))),
         Expanded(
           child: filtered.isEmpty
               ? _buildEmptyState()
               : _buildConversationList(filtered),
         ),
+        if (_hasMore)
+          TextButton.icon(
+              onPressed: _loadingMore ? null : _loadMore,
+              icon: const Icon(Icons.expand_more),
+              label: Text(_loadingMore
+                  ? 'Chargement…'
+                  : 'Charger les messages plus anciens')),
       ],
     );
   }
@@ -319,9 +367,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
               context,
               MaterialPageRoute(
                 builder: (_) => ConversationThreadScreen(
-                    conversation: conversation,
-                    appIcon: _installedAppsByPackage[conversation.packageName]?.icon,
-                  ),
+                  conversation: conversation,
+                  history: _history,
+                  appIcon:
+                      _installedAppsByPackage[conversation.packageName]?.icon,
+                ),
               ),
             );
           },
@@ -337,22 +387,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     if (_items.isEmpty) {
       if (hasApps) {
-        message =
-            'Aucune notification capturée pour l\'instant.\n\n'
+        message = 'Aucune notification capturée pour l\'instant.\n\n'
             'Les notifications des applications surveillées '
             'apparaîtront ici.';
       } else {
-        message =
-            'Aucune application surveillée.\n\n'
+        message = 'Aucune application surveillée.\n\n'
             'Sélectionne les applications à écouter via '
             'l\'icône de réglages en haut.';
       }
     } else if (_selectedPackage != null) {
-      final selectedApp =
-          _installedAppsByPackage[_selectedPackage];
+      final selectedApp = _installedAppsByPackage[_selectedPackage];
 
-      message =
-          'Aucune notification pour '
+      message = 'Aucune notification pour '
           '${selectedApp?.appName ?? 'cette application'}.';
     } else {
       message = 'Aucune notification capturée pour l\'instant.';

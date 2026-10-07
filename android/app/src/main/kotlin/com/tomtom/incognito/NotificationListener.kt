@@ -47,7 +47,7 @@ class NotificationListener : NotificationListenerService() {
         ).apply {
             description = "Notifications générées par Incognito pour les applications surveillées"
         }
-        manager.createNotificationChannel(channel)
+        manager?.createNotificationChannel(channel)
     }
 
     override fun onCreate() {
@@ -116,35 +116,74 @@ class NotificationListener : NotificationListenerService() {
             else -> now
         }
 
-        val id = store.insert(
-            packageName = packageName,
-            appName = appName,
-            title = title,
-            text = text,
-            timestamp = timestamp,
-            conversationKey = conversationKey
-        )
-
-        onNewNotification?.invoke(
-            mapOf(
-                "id" to id,
-                "packageName" to packageName,
-                "appName" to appName,
-                "title" to (title ?: ""),
-                "text" to (text ?: ""),
-                "timestamp" to timestamp,
-                "conversationKey" to (conversationKey ?: "")
-            )
-        )
-
-        if (prefs.isIncognitoNotificationsEnabled() && !prefs.isSilent(packageName)) {
-            postIncognitoNotification(
-                id = id,
-                appName = appName,
-                title = title,
-                text = text
-            )
+        val messages = extractMessages(extras).ifEmpty {
+            listOf(CapturedMessage(text.orEmpty(), "", timestamp, false))
         }
+        var latestId = -1L
+        var latestText = text
+        for (message in messages) {
+            // Timestamp is part of the identity: two identical messages sent at
+            // different times must both be preserved. Never hash only the text.
+            val messageKey = if (message.structured && message.timestamp > 0L) {
+                val identity = listOf(packageName, conversationKey.orEmpty(),
+                    message.sender, message.timestamp.toString(), message.text)
+                    .joinToString("\u0000")
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(identity.toByteArray(Charsets.UTF_8))
+                    .joinToString("") { "%02x".format(it) }
+            } else null
+            val messageTime = message.timestamp.takeIf { it > 0L } ?: timestamp
+            val id = store.insert(packageName, appName, title, message.text,
+                messageTime, conversationKey, message.sender, messageKey)
+            if (id < 0L) continue
+            latestId = id
+            latestText = message.text
+            onNewNotification?.invoke(mapOf(
+                "id" to id, "packageName" to packageName, "appName" to appName,
+                "title" to title.orEmpty(), "text" to message.text,
+                "timestamp" to messageTime, "conversationKey" to conversationKey.orEmpty(),
+                "sender" to message.sender
+            ))
+        }
+        if (latestId >= 0L && prefs.isIncognitoNotificationsEnabled() && !prefs.isSilent(packageName)) {
+            postIncognitoNotification(latestId, appName, title, latestText)
+        }
+    }
+
+    private data class CapturedMessage(
+        val text: String, val sender: String, val timestamp: Long, val structured: Boolean
+    )
+
+    private fun extractMessages(extras: Bundle): List<CapturedMessage> {
+        val result = mutableListOf<CapturedMessage>()
+        for (key in listOf(Notification.EXTRA_HISTORIC_MESSAGES, Notification.EXTRA_MESSAGES)) {
+            @Suppress("DEPRECATION")
+            val entries = extras.getParcelableArray(key) ?: continue
+            for (entry in entries) {
+                val bundle = entry as? Bundle ?: continue
+                val text = bundle.getCharSequence("text")?.toString().orEmpty()
+                val mime = bundle.getString("type").orEmpty()
+                val body = text.ifBlank {
+                    when {
+                        mime.startsWith("audio/") -> "🎤 Message vocal"
+                        mime.startsWith("image/") -> "📷 Image"
+                        mime.startsWith("video/") -> "🎬 Vidéo"
+                        mime.isNotBlank() -> "📎 Pièce jointe"
+                        else -> ""
+                    }
+                }
+                if (body.isBlank()) continue
+                val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    @Suppress("DEPRECATION")
+                    (bundle.getParcelable("sender_person") as? android.app.Person)
+                        ?.name?.toString()
+                } else null
+                result.add(CapturedMessage(body,
+                    sender ?: bundle.getCharSequence("sender")?.toString().orEmpty(),
+                    bundle.getLong("time"), true))
+            }
+        }
+        return result.sortedBy { it.timestamp }
     }
 
     private fun isIgnoredWhatsAppNotification(
@@ -311,12 +350,12 @@ class NotificationListener : NotificationListenerService() {
             ?.trim()
             ?.takeIf { it.isNotBlank() }
 
-        val group = sbn.groupKey?.takeIf { it.isNotBlank() }
+        val shortcut = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) sbn.notification.shortcutId else null
 
         return when {
+            !shortcut.isNullOrBlank() -> "$packageName|shortcut:$shortcut"
             conversation != null -> "$packageName|conversation:${conversation.normalizeForCompare()}"
-            group != null -> "$packageName|group:$group"
-            else -> null
+            else -> "$packageName|title:${extractBestTitle(extras)?.normalizeForCompare().orEmpty()}"
         }
     }
 
@@ -367,6 +406,6 @@ class NotificationListener : NotificationListenerService() {
             .build()
 
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify((id and 0x7fffffffL).toInt(), notification)
+        manager?.notify((id and 0x7fffffffL).toInt(), notification)
     }
 }

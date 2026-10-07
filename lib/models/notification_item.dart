@@ -1,4 +1,5 @@
 class NotificationItem {
+  final String sender;
   final int id;
   final String packageName;
   final String appName;
@@ -15,6 +16,7 @@ class NotificationItem {
     required this.text,
     required this.timestamp,
     this.conversationKey = '',
+    this.sender = '',
   });
 
   factory NotificationItem.fromMap(Map<dynamic, dynamic> map) {
@@ -28,6 +30,7 @@ class NotificationItem {
         (map['timestamp'] as num).toInt(),
       ),
       conversationKey: map['conversationKey'] as String? ?? '',
+      sender: map['sender'] as String? ?? '',
     );
   }
 }
