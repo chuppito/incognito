@@ -94,7 +94,14 @@ class MainActivity : FlutterActivity() {
                     val args = call.arguments as Map<*, *>
                     val limit = (args["limit"] as? Int) ?: 100
                     val offset = (args["offset"] as? Int) ?: 0
-                    result.success(store.getHistory(limit, offset))
+                    Thread {
+                        try {
+                            val history = store.getHistory(limit, offset)
+                            runOnUiThread { result.success(history) }
+                        } catch (e: Exception) {
+                            runOnUiThread { result.error("history_error", "Historique indisponible", null) }
+                        }
+                    }.start()
                 }
 
                 "deleteNotification" -> {
@@ -193,3 +200,4 @@ class MainActivity : FlutterActivity() {
         return android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP)
     }
 }
+

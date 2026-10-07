@@ -17,7 +17,7 @@ class NotificationStore(context: Context) :
 
     companion object {
         private const val DB_NAME = "incognito_notifications.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
         private const val TABLE = "notifications"
 
         @Volatile
@@ -39,10 +39,14 @@ class NotificationStore(context: Context) :
                 title TEXT,
                 text TEXT,
                 timestamp INTEGER NOT NULL,
-                conversation_key TEXT
+                conversation_key TEXT,
+                sender TEXT NOT NULL DEFAULT '',
+                message_key TEXT
             )
             """.trimIndent()
         )
+        db.execSQL("CREATE TABLE IF NOT EXISTS captured_message_keys (message_key TEXT PRIMARY KEY)")
+        db.execSQL("CREATE UNIQUE INDEX idx_notifications_message ON $TABLE(message_key)")
         db.execSQL("CREATE INDEX idx_notifications_timestamp ON $TABLE(timestamp DESC)")
         db.execSQL("CREATE INDEX idx_notifications_conversation ON $TABLE(conversation_key)")
     }
@@ -52,6 +56,12 @@ class NotificationStore(context: Context) :
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN conversation_key TEXT")
             db.execSQL("CREATE INDEX idx_notifications_conversation ON $TABLE(conversation_key)")
         }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN sender TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN message_key TEXT")
+            db.execSQL("CREATE TABLE IF NOT EXISTS captured_message_keys (message_key TEXT PRIMARY KEY)")
+        db.execSQL("CREATE UNIQUE INDEX idx_notifications_message ON $TABLE(message_key)")
+        }
     }
 
     fun insert(
@@ -60,7 +70,9 @@ class NotificationStore(context: Context) :
         title: String?,
         text: String?,
         timestamp: Long,
-        conversationKey: String? = null
+        conversationKey: String? = null,
+        sender: String = "",
+        messageKey: String? = null
     ): Long {
         val values = ContentValues().apply {
             put("package_name", packageName)
@@ -69,15 +81,33 @@ class NotificationStore(context: Context) :
             put("text", text ?: "")
             put("timestamp", timestamp)
             put("conversation_key", conversationKey ?: "")
+            put("sender", sender)
+            put("message_key", messageKey)
         }
-        return writableDatabase.insert(TABLE, null, values)
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            if (messageKey != null) {
+                val keyValues = ContentValues().apply { put("message_key", messageKey) }
+                if (db.insertWithOnConflict("captured_message_keys", null, keyValues,
+                        SQLiteDatabase.CONFLICT_IGNORE) < 0L) {
+                    db.setTransactionSuccessful()
+                    return -1L
+                }
+            }
+            val id = db.insertOrThrow(TABLE, null, values)
+            db.setTransactionSuccessful()
+            return id
+        } finally {
+            db.endTransaction()
+        }
     }
 
     fun getHistory(limit: Int, offset: Int): List<Map<String, Any?>> {
         val results = mutableListOf<Map<String, Any?>>()
         val cursor = readableDatabase.query(
             TABLE, null, null, null, null, null,
-            "timestamp DESC, id DESC", "$offset,$limit"
+            "timestamp DESC, id DESC", "${offset.coerceAtLeast(0)},${limit.coerceIn(1, 500)}"
         )
         cursor.use {
             while (it.moveToNext()) {
@@ -89,7 +119,9 @@ class NotificationStore(context: Context) :
                         "title" to it.getString(it.getColumnIndexOrThrow("title")),
                         "text" to it.getString(it.getColumnIndexOrThrow("text")),
                         "timestamp" to it.getLong(it.getColumnIndexOrThrow("timestamp")),
-                        "conversationKey" to it.getString(it.getColumnIndexOrThrow("conversation_key"))
+                        "conversationKey" to it.getString(it.getColumnIndexOrThrow("conversation_key")),
+                        "sender" to it.getString(it.getColumnIndexOrThrow("sender")),
+                        "structured" to !it.isNull(it.getColumnIndexOrThrow("message_key"))
                     )
                 )
             }
@@ -105,3 +137,4 @@ class NotificationStore(context: Context) :
     fun clearForPackage(packageName: String): Int =
         writableDatabase.delete(TABLE, "package_name = ?", arrayOf(packageName))
 }
+

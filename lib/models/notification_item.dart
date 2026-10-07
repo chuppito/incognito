@@ -6,6 +6,8 @@ class NotificationItem {
   final String text;
   final DateTime timestamp;
   final String conversationKey;
+  final String sender;
+  final bool structured;
 
   NotificationItem({
     required this.id,
@@ -15,6 +17,8 @@ class NotificationItem {
     required this.text,
     required this.timestamp,
     this.conversationKey = '',
+    this.sender = '',
+    this.structured = false,
   });
 
   factory NotificationItem.fromMap(Map<dynamic, dynamic> map) {
@@ -28,6 +32,9 @@ class NotificationItem {
         (map['timestamp'] as num).toInt(),
       ),
       conversationKey: map['conversationKey'] as String? ?? '',
+      sender: map['sender'] as String? ?? '',
+      structured: map['structured'] == true,
     );
   }
 }
+

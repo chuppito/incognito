@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
 import '../models/installed_app.dart';
@@ -8,9 +6,7 @@ import '../models/notification_item.dart';
 import '../services/incognito_channel.dart';
 import '../widgets/app_filter_tabs.dart';
 import '../widgets/conversation_tile.dart';
-import '../widgets/notification_tile.dart';
 import 'conversation_thread_screen.dart';
-import 'notification_detail_screen.dart';
 import 'settings_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -20,7 +16,7 @@ class HistoryScreen extends StatefulWidget {
   State<HistoryScreen> createState() => _HistoryScreenState();
 }
 
-class _HistoryScreenState extends State<HistoryScreen> {
+class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserver {
   final _channel = IncognitoChannel.instance;
 
   List<NotificationItem> _items = [];
@@ -33,6 +29,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Set<String> _listenedApps = {};
 
   bool _loading = true;
+  String _query = '';
+  String? _error;
   bool? _accessGranted;
 
   /// null = "Tout"
@@ -41,12 +39,13 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _channel.setOnNotificationReceived((item) {
       if (!mounted) return;
 
       setState(() {
-        _items = [item, ..._items];
+        _items = [item, ..._items.where((e) => e.id != item.id)];
       });
     });
 
@@ -54,17 +53,16 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _init() async {
-    final granted =
-        await _channel.isNotificationAccessGranted();
-
-    if (!mounted) return;
-
-    setState(() {
-      _accessGranted = granted;
-    });
-
-    await _loadApps();
-    await _refresh();
+    try {
+      await _loadApps();
+      await _refresh();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Impossible de charger les applications. Réessaie.';
+      });
+    }
   }
 
   /// Charge les applications installées ainsi que celles
@@ -103,40 +101,50 @@ class _HistoryScreenState extends State<HistoryScreen> {
       _loading = true;
     });
 
-    final history = await _channel.getHistory();
-    final granted =
-        await _channel.isNotificationAccessGranted();
-
-    if (!mounted) return;
-
-    setState(() {
-      _items = history;
-
-      _accessGranted = granted;
-
-      _loading = false;
-
-      // IMPORTANT :
-      // On ne supprime PAS la sélection simplement parce
-      // qu'une application n'a aucune notification.
-      //
-      // On revient à "Tout" uniquement si l'application
-      // n'est plus surveillée.
-      if (_selectedPackage != null &&
-          !_listenedApps.contains(_selectedPackage)) {
-        _selectedPackage = null;
+    final originalIds = _items.map((e) => e.id).toSet();
+    try {
+      final history = <NotificationItem>[];
+      var offset = 0;
+      while (true) {
+        final page = await _channel.getHistory(limit: 500, offset: offset);
+        history.addAll(page);
+        if (page.length < 500) break;
+        offset += page.length;
       }
-    });
+      final granted = await _channel.isNotificationAccessGranted();
+      if (!mounted) return;
+      setState(() {
+        // Conserver les arrivées reçues pendant le chargement.
+        final merged = {for (final item in history) item.id: item};
+        for (final item in _items) {
+          if (!originalIds.contains(item.id)) {
+            merged[item.id] = item;
+          }
+        }
+        _items = merged.values.toList();
+        _accessGranted = granted;
+        _loading = false;
+        _error = null;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = 'Impossible de charger l’historique. Réessaie.';
+      });
+    }
   }
 
-  Future<void> _deleteItem(NotificationItem item) async {
-    await _channel.deleteNotification(item.id);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _channel.clearOnNotificationReceived();
+    super.dispose();
+  }
 
-    if (!mounted) return;
-
-    setState(() {
-      _items.removeWhere((e) => e.id == item.id);
-    });
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
   }
 
   Future<void> _confirmClearAll() async {
@@ -217,6 +225,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Incognito'),
+        bottom: const PreferredSize(preferredSize: Size.fromHeight(20),
+          child: Padding(padding: EdgeInsets.only(bottom: 8), child: Text('Version 2.0.0'))),
         actions: [
           IconButton(
             icon: const Icon(Icons.tune),
@@ -273,6 +283,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     return Column(
       children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: TextField(
+            decoration: const InputDecoration(
+              hintText: 'Rechercher un contact ou un message',
+              prefixIcon: Icon(Icons.search_rounded),
+              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(18))),
+              isDense: true,
+            ),
+            onChanged: (value) => setState(() => _query = value),
+          ),
+        ),
+        if (_error != null)
+          ListTile(title: Text(_error!), trailing: IconButton(
+            icon: const Icon(Icons.refresh), onPressed: _refresh)),
         // Les applications surveillées sont affichées même
         // lorsqu'il n'existe encore aucune notification.
         if (tabs.isNotEmpty)
@@ -303,9 +328,18 @@ class _HistoryScreenState extends State<HistoryScreen> {
   /// séparée par application grâce à la clé package + conversation.
 
   Widget _buildConversationList(List<NotificationItem> filtered) {
-    final conversations = buildConversations(filtered);
+    final query = _query.trim().toLowerCase();
+    final conversations = buildConversations(filtered).where((conversation) =>
+      query.isEmpty || conversation.contactName.toLowerCase().contains(query) ||
+      conversation.appName.toLowerCase().contains(query) ||
+      conversation.items.any((item) => item.text.toLowerCase().contains(query) ||
+        item.sender.toLowerCase().contains(query))).toList();
+    if (conversations.isEmpty) {
+      return const Center(child: Text('Aucun résultat pour cette recherche.'));
+    }
 
     return ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: conversations.length,
       separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (context, index) {
@@ -314,8 +348,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
         return ConversationTile(
           conversation: conversation,
           appIcon: _installedAppsByPackage[conversation.packageName]?.icon,
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (_) => ConversationThreadScreen(
@@ -324,6 +358,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   ),
               ),
             );
+            await _refresh();
           },
         );
       },
@@ -420,3 +455,4 @@ class _AccessRequestBanner extends StatelessWidget {
     );
   }
 }
+

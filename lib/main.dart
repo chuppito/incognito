@@ -15,16 +15,18 @@ class IncognitoApp extends StatelessWidget {
       title: 'Incognito',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorSchemeSeed: Colors.deepPurple,
+        colorSchemeSeed: const Color(0xFF49615D),
         useMaterial3: true,
         brightness: Brightness.light,
       ),
       darkTheme: ThemeData(
-        colorSchemeSeed: Colors.deepPurple,
+        colorSchemeSeed: const Color(0xFF49615D),
         useMaterial3: true,
         brightness: Brightness.dark,
       ),
+      themeMode: ThemeMode.system,
       home: const HistoryScreen(),
     );
   }
 }
+

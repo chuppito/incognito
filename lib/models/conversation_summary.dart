@@ -47,6 +47,10 @@ String _normalizeName(String value) {
 /// - si aucun nom exploitable n'est disponible, conversationKey est utilisé ;
 /// - les conversations restent ordonnées selon leur dernière notification.
 List<ConversationSummary> buildConversations(List<NotificationItem> items) {
+  items = [...items]..sort((a, b) {
+    final time = b.timestamp.compareTo(a.timestamp);
+    return time != 0 ? time : b.id.compareTo(a.id);
+  });
   final nameKeys = <String, Set<String>>{};
 
   for (final item in items) {
@@ -113,3 +117,4 @@ List<ConversationSummary> buildConversations(List<NotificationItem> items) {
     );
   }).toList();
 }
+

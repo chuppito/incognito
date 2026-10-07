@@ -36,6 +36,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _channel.getSilentApps(),
       _channel.isIncognitoNotificationsEnabled(),
     ]);
+    if (!mounted) return;
     setState(() {
       _apps = results[0] as List<InstalledApp>;
       _listened = results[1] as Set<String>;
@@ -171,3 +172,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+

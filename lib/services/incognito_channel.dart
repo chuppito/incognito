@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/services.dart';
 
 import '../models/installed_app.dart';
@@ -6,7 +7,19 @@ import '../models/notification_item.dart';
 /// Encapsule tous les échanges avec le code natif Android (MainActivity.kt)
 /// via un seul MethodChannel.
 class IncognitoChannel {
-  IncognitoChannel._();
+  IncognitoChannel._() {
+    _channel.setMethodCallHandler((call) async {
+      if (call.method == 'onNotificationReceived') {
+        final map = Map<dynamic, dynamic>.from(call.arguments as Map);
+        final item = NotificationItem.fromMap(map);
+        _notifications.add(item);
+        _onReceived?.call(item);
+      }
+    });
+  }
+  final _notifications = StreamController<NotificationItem>.broadcast();
+  Stream<NotificationItem> get notifications => _notifications.stream;
+  void Function(NotificationItem)? _onReceived;
   static final IncognitoChannel instance = IncognitoChannel._();
 
   static const _channel = MethodChannel('com.tomtom.incognito/notifications');
@@ -14,13 +27,10 @@ class IncognitoChannel {
   /// Notifie l'UI en direct quand une notification arrive pendant que
   /// l'app est ouverte (voir NotificationListener.kt côté natif).
   void setOnNotificationReceived(void Function(NotificationItem item) onReceived) {
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onNotificationReceived') {
-        final map = Map<dynamic, dynamic>.from(call.arguments as Map);
-        onReceived(NotificationItem.fromMap(map));
-      }
-    });
+    _onReceived = onReceived;
   }
+
+  void clearOnNotificationReceived() => _onReceived = null;
 
   Future<bool> isNotificationAccessGranted() async {
     final granted = await _channel.invokeMethod<bool>('isNotificationAccessGranted');
@@ -99,3 +109,4 @@ class IncognitoChannel {
     return opened ?? false;
   }
 }
+

@@ -73,9 +73,8 @@ class NotificationListener : NotificationListenerService() {
         // des messages et ne doivent pas apparaître dans Incognito.
         if (isIgnoredWhatsAppNotification(packageName, title, text)) return
 
-        // groupKey est stable pour une conversation/notification groupée et
-        // permet à l'UI de connaître l'origine conversationnelle sans exposer
-        // de données supplémentaires.
+        // Le groupe Android peut contenir plusieurs conversations : utiliser
+        // un raccourci de conversation ou son titre, jamais le groupe système.
         val conversationKey = buildConversationKey(packageName, sbn, extras)
 
         val fingerprint = buildString {
@@ -91,7 +90,8 @@ class NotificationListener : NotificationListenerService() {
         }
 
         val now = System.currentTimeMillis()
-        synchronized(recentCache) {
+        val parsedMessages = extractMessages(extras, sbn.postTime)
+        if (parsedMessages.none { it.structured }) synchronized(recentCache) {
             val lastSeen = recentCache[fingerprint]
             if (lastSeen != null && now - lastSeen < dedupeWindowMs) return
             recentCache[fingerprint] = now
@@ -110,40 +110,73 @@ class NotificationListener : NotificationListenerService() {
             packageName
         }
 
-        val timestamp = when {
-            sbn.postTime > 0L -> sbn.postTime
-            notification.`when` > 0L -> notification.`when`
-            else -> now
+        val timestamp = sbn.postTime.takeIf { it > 0L } ?: now
+        val messages = parsedMessages.ifEmpty {
+            listOf(CapturedMessage(text.orEmpty(), "", timestamp, false))
         }
-
-        val id = store.insert(
-            packageName = packageName,
-            appName = appName,
-            title = title,
-            text = text,
-            timestamp = timestamp,
-            conversationKey = conversationKey
-        )
-
-        onNewNotification?.invoke(
-            mapOf(
-                "id" to id,
-                "packageName" to packageName,
-                "appName" to appName,
-                "title" to (title ?: ""),
-                "text" to (text ?: ""),
-                "timestamp" to timestamp,
-                "conversationKey" to (conversationKey ?: "")
-            )
-        )
-
+        val occurrences = mutableMapOf<String, Int>()
+        var newestInserted: Pair<Long, CapturedMessage>? = null
+        for (message in messages) {
+            // MessagingStyle republie son historique à chaque arrivée. Une clé
+            // persistante évite les doublons, même après redémarrage du service.
+            val stableConversation = conversationKey ?: title.orEmpty().replace("\\s*\\(\\d+(\\s*messages?)?\\)\\s*$".toRegex(RegexOption.IGNORE_CASE), "").normalizeForCompare()
+            val identity = listOf(packageName, stableConversation,
+                message.timestamp.toString(), message.sender, message.text).joinToString("\u0000")
+            val occurrence = occurrences.getOrDefault(identity, 0)
+            occurrences[identity] = occurrence + 1
+            val messageKey = if (message.structured) {
+                java.security.MessageDigest.getInstance("SHA-256")
+                    .digest("$identity\u0000$occurrence".toByteArray(Charsets.UTF_8))
+                    .joinToString("") { "%02x".format(it) }
+            } else null
+            val id = store.insert(packageName, appName, title, message.text,
+                message.timestamp, conversationKey, message.sender, messageKey)
+            if (id < 0L) continue
+            onNewNotification?.invoke(mapOf(
+                "id" to id, "packageName" to packageName, "appName" to appName,
+                "title" to title.orEmpty(), "text" to message.text,
+                "timestamp" to message.timestamp, "conversationKey" to conversationKey.orEmpty(),
+                "sender" to message.sender, "structured" to message.structured
+            ))
+            if (newestInserted == null || message.timestamp >= newestInserted.second.timestamp) {
+                newestInserted = id to message
+            }
+        }
         if (prefs.isIncognitoNotificationsEnabled() && !prefs.isSilent(packageName)) {
-            postIncognitoNotification(
-                id = id,
-                appName = appName,
-                title = title,
-                text = text
-            )
+            newestInserted?.let { (id, message) ->
+                postIncognitoNotification(id, appName, title,
+                    if (message.sender.isBlank()) message.text else "${message.sender}: ${message.text}")
+            }
+        }
+    }
+
+    private data class CapturedMessage(
+        val text: String, val sender: String, val timestamp: Long, val structured: Boolean
+    )
+
+    private fun extractMessages(extras: Bundle, fallbackTimestamp: Long): List<CapturedMessage> {
+        val parcelables = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES, Parcelable::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            extras.getParcelableArray(Notification.EXTRA_MESSAGES)
+        } ?: return emptyList()
+        return parcelables.mapNotNull { parcelable ->
+            val bundle = parcelable as? Bundle ?: return@mapNotNull null
+            val body = bundle.getCharSequence("text")?.toString().orEmpty()
+            // Ne pas inventer le contenu d'une pièce jointe inaccessible.
+            val displayText = body.ifBlank {
+                bundle.getString("type")?.let { "Pièce jointe ($it)" }.orEmpty()
+            }
+            if (displayText.isBlank()) return@mapNotNull null
+            val sender = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                @Suppress("DEPRECATION")
+                val person = bundle.getParcelable<android.app.Person>("sender_person")
+                person?.name?.toString() ?: bundle.getCharSequence("sender")?.toString().orEmpty()
+            } else bundle.getCharSequence("sender")?.toString().orEmpty()
+            CapturedMessage(displayText, sender.trim(),
+                bundle.getLong("time").takeIf { it > 0L } ?: fallbackTimestamp,
+                bundle.getLong("time") > 0L)
         }
     }
 
@@ -275,28 +308,6 @@ class NotificationListener : NotificationListenerService() {
         return if (cleaned.isNotEmpty()) cleaned.joinToString("\n") else null
     }
 
-    private fun extractHistoricMessages(extras: Bundle): String? {
-        val parcelables: Array<Parcelable> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            extras.getParcelableArray(Notification.EXTRA_HISTORIC_MESSAGES, Parcelable::class.java) ?: return null
-        } else {
-            @Suppress("DEPRECATION")
-            extras.getParcelableArray(Notification.EXTRA_HISTORIC_MESSAGES) ?: return null
-        }
-
-        val lines: List<String> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Notification.MessagingStyle.Message.getMessagesFromBundleArray(parcelables)
-                .mapNotNull { msg -> msg.text?.toString()?.trim()?.takeIf { it.isNotBlank() } }
-        } else {
-            parcelables.mapNotNull { parcelable ->
-                val bundle = parcelable as? Bundle ?: return@mapNotNull null
-                bundle.getCharSequence("text")?.toString()?.trim()?.takeIf { it.isNotBlank() }
-            }
-        }
-
-        val cleaned = lines.distinct()
-        return if (cleaned.isNotEmpty()) cleaned.joinToString("\n") else null
-    }
-
     private fun buildConversationKey(
         packageName: String,
         sbn: StatusBarNotification,
@@ -311,11 +322,12 @@ class NotificationListener : NotificationListenerService() {
             ?.trim()
             ?.takeIf { it.isNotBlank() }
 
-        val group = sbn.groupKey?.takeIf { it.isNotBlank() }
-
+        val shortcut = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            sbn.notification.shortcutId?.takeIf { it.isNotBlank() }
+        } else null
         return when {
-            conversation != null -> "$packageName|conversation:${conversation.normalizeForCompare()}"
-            group != null -> "$packageName|group:$group"
+            shortcut != null -> "$packageName|shortcut:$shortcut"
+            conversation != null -> "$packageName|conversation:${conversation.replace("\\s*\\(\\d+(\\s*messages?)?\\)\\s*$".toRegex(RegexOption.IGNORE_CASE), "").normalizeForCompare()}"
             else -> null
         }
     }
@@ -370,3 +382,4 @@ class NotificationListener : NotificationListenerService() {
         manager.notify((id and 0x7fffffffL).toInt(), notification)
     }
 }
+

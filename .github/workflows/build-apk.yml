@@ -29,8 +29,11 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Analyze (non bloquant)
-        run: flutter analyze || true
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Test conversations
+        run: flutter test
 
       # Pas de clé de signature configurée pour l'instant -> build debug,
       # installable directement (mais pas publiable sur le Play Store en l'état).
@@ -89,3 +92,4 @@ jobs:
   #       with:
   #         name: incognito-release-apk
   #         path: build/app/outputs/flutter-apk/app-release.apk
+

@@ -1,3 +1,17 @@
+## Incognito 2.0.0 — conversations
+
+- Les notifications Android MessagingStyle sont enregistrées message par message, avec expéditeur et heure fournis par Android.
+- L’historique republié par WhatsApp est dédupliqué dans SQLite, y compris après un redémarrage du service. Deux messages identiques à des heures différentes sont conservés.
+- Une suppression dans Incognito conserve la clé de capture pour éviter que le même message réapparaisse lors de la mise à jour suivante de la notification.
+- Le fil affiche les messages séparés, les dates, une recherche, la copie et la suppression individuelle.
+- La liste des conversations propose une recherche par contact, expéditeur et contenu ; les messages reçus actualisent également le fil ouvert.
+- Le bouton « Ouvrir » lance l’application source. Il ne garantit pas l’ouverture du groupe concerné.
+- La base existante est migrée sans effacer les anciens enregistrements. Les anciens blocs restent intacts : leurs limites et heures individuelles n’ont pas été enregistrées.
+- Les captures dépendent des informations présentes dans les notifications. Incognito ne récupère pas les conversations silencieuses ni les fichiers joints absents de ces notifications.
+- Version Android : 2.0.0 (code 7). Signature et identifiant d’application conservés.
+
+Vérification : `flutter test`, `flutter analyze --no-fatal-infos --no-fatal-warnings`, puis `flutter build apk --debug` dans le workflow existant.
+
 # Incognito (com.tomtom.incognito)
 
 Historique de notifications multi-apps : capture le contenu des notifications
@@ -102,3 +116,4 @@ android/app/src/main/kotlin/com/tomtom/incognito/
 - Les messages longs sont défilables et sélectionnables dans l'écran de détail.
 
 > Limite Android : Incognito ne peut pas reconstruire une partie de message que l'application source n'a jamais fournie à Android ou qu'elle a elle-même tronquée avant de créer la notification.
+
