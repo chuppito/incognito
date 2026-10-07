@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/notification_item.dart';
+import '../models/conversation_messages.dart';
 
 Color senderColor(String name, bool dark) {
   const light = [Color(0xFF1565C0), Color(0xFF6A43B9), Color(0xFF008577),
@@ -22,6 +23,25 @@ class MessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final color = senderColor(item.sender, dark);
+    final reaction = ReactionInfo.parse(item.text);
+    if (reaction != null) {
+      return GestureDetector(onLongPress: onLongPress, child: Container(
+        margin: const EdgeInsets.fromLTRB(42, 0, 18, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: dark ? const Color(0xFF202C33) : const Color(0xFFFFFBF3),
+          borderRadius: BorderRadius.circular(14)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('${reaction.emoji}  ${item.sender.isEmpty ? "Réaction" : item.sender}',
+            style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 3),
+          Text('Sur : ${reaction.target}', maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall),
+          if (item.timeKnown) Align(alignment: Alignment.centerRight,
+            child: Text(DateFormat('HH:mm').format(item.timestamp),
+              style: Theme.of(context).textTheme.bodySmall)),
+        ]),
+      ));
+    }
     return LayoutBuilder(builder: (context, constraints) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -58,8 +78,8 @@ class MessageBubble extends StatelessWidget {
                     SelectableText(item.text.isEmpty ? 'Notification sans texte.' : item.text,
                       style: TextStyle(color: dark ? const Color(0xFFE9EDEF) : const Color(0xFF111B21),
                         fontSize: 17, height: 1.25)),
-                    const SizedBox(height: 3),
-                    Align(alignment: Alignment.centerRight,
+                    if (item.timeKnown) const SizedBox(height: 3),
+                    if (item.timeKnown) Align(alignment: Alignment.centerRight,
                       child: Text(DateFormat('HH:mm').format(item.timestamp),
                         style: TextStyle(fontSize: 11,
                           color: dark ? const Color(0xFF8696A0) : const Color(0xFF667781)))),

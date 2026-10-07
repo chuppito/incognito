@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../models/conversation_summary.dart';
+import '../models/conversation_messages.dart';
 import '../utils/relative_time.dart';
 import 'conversation_avatar.dart';
 
@@ -20,8 +21,9 @@ class ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final latest = conversation.latest;
-    final messageCount = conversation.items.length;
+    final messages = expandConversationMessages(conversation.items);
+    final latest = messages.first;
+    final messageCount = messages.length;
 
     return ListTile(
       onTap: onTap,

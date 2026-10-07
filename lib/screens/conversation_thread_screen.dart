@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../models/conversation_summary.dart';
 import '../models/notification_item.dart';
+import '../models/conversation_messages.dart';
 import '../services/incognito_channel.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/conversation_avatar.dart';
@@ -107,11 +108,13 @@ class _ConversationThreadScreenState extends State<ConversationThreadScreen>
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
     final query = _query.trim().toLowerCase();
-    final messages = _items.where((e) => query.isEmpty ||
+    final messages = expandConversationMessages(_items).where((e) => query.isEmpty ||
       e.text.toLowerCase().contains(query) || e.sender.toLowerCase().contains(query)).toList()
       ..sort((a, b) {
         final time = b.timestamp.compareTo(a.timestamp);
-        return time != 0 ? time : b.id.compareTo(a.id);
+        if (time != 0) return time;
+        final id = b.id.compareTo(a.id);
+        return id != 0 ? id : b.displayIndex.compareTo(a.displayIndex);
       });
     return Scaffold(
       backgroundColor: dark ? const Color(0xFF0B141A) : const Color(0xFFF2EEE5),
@@ -157,6 +160,8 @@ class _ConversationThreadScreenState extends State<ConversationThreadScreen>
             itemBuilder: (context, index) {
               final item = messages[index];
               final showDate = index == messages.length - 1 ||
+                (item.timeKnown != messages[index + 1].timeKnown) ||
+                (!item.timeKnown && item.id != messages[index + 1].id) ||
                 DateUtils.dateOnly(item.timestamp) != DateUtils.dateOnly(messages[index + 1].timestamp);
               return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 if (showDate) Center(child: Container(
@@ -165,7 +170,8 @@ class _ConversationThreadScreenState extends State<ConversationThreadScreen>
                   decoration: BoxDecoration(
                     color: dark ? const Color(0xFF202C33) : const Color(0xFFFFFEFA),
                     borderRadius: BorderRadius.circular(8)),
-                  child: Text(_dateLabel(item.timestamp), style: const TextStyle(fontSize: 12)),
+                  child: Text(item.timeKnown ? _dateLabel(item.timestamp) :
+                    'Capture du ${DateFormat("dd/MM HH:mm").format(item.timestamp)}', style: const TextStyle(fontSize: 12)),
                 )),
                 MessageBubble(item: item, onLongPress: () => _showMessageActions(item)),
               ]);
@@ -212,7 +218,9 @@ class _ConversationThreadScreenState extends State<ConversationThreadScreen>
     }
     final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
       title: const Text('Supprimer ce message ?'),
-      content: const Text('Il sera retiré uniquement de l’historique Incognito.'),
+      content: Text(_items.any((source) => source.id == item.id && source.text != item.text && source.sender.isEmpty)
+        ? 'Ce message appartient à un ancien bloc. La suppression retirera tout ce bloc de l’historique Incognito.'
+        : 'Il sera retiré uniquement de l’historique Incognito.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Annuler')),
         TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Supprimer')),

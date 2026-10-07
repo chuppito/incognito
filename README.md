@@ -1,3 +1,11 @@
+## Incognito 2.0.2 — anciens blocs et réactions
+
+Les anciens blocs WhatsApp sont présentés en plusieurs messages à partir des préfixes d’expéditeur « Nom: ». Les lignes de continuation restent dans leur message. Il s’agit d’une interprétation des textes aplatis : les contenus et identifiants SQLite restent conservés. Un texte de forme ambiguë peut être interprété comme un préfixe ; l’original n’est pas modifié.
+
+Pour un bloc de plusieurs messages, seule l’heure de capture commune est affichée, sans attribuer cette heure à chaque message. Le compteur de conversation reflète les messages présentés. Copier copie le message choisi ; supprimer un message provenant d’un bloc retire le bloc entier, après un avertissement explicite.
+
+Les textes de réaction « A réagi par … à … » sont présentés sous une forme compacte et leurs republications identiques regroupées dans le fil. La réaction n’est pas rattachée artificiellement à un message absent de l’historique.
+
 ## Incognito 2.0.1 — présentation des groupes
 
 Le groupe conserve son nom dans la liste et dans l’en-tête du fil. Les messages sont présentés dans des bulles blanches sur fond beige, avec le nom coloré de l’expéditeur, une initiale et l’heure en bas à droite. La recherche est accessible depuis l’en-tête ; la copie et la suppression par appui long sur une bulle. Le thème sombre est conservé.

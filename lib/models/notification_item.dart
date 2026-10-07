@@ -8,6 +8,8 @@ class NotificationItem {
   final String conversationKey;
   final String sender;
   final bool structured;
+  final bool timeKnown;
+  final int displayIndex;
 
   NotificationItem({
     required this.id,
@@ -19,6 +21,8 @@ class NotificationItem {
     this.conversationKey = '',
     this.sender = '',
     this.structured = false,
+    this.timeKnown = true,
+    this.displayIndex = 0,
   });
 
   factory NotificationItem.fromMap(Map<dynamic, dynamic> map) {
