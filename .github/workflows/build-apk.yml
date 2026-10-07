@@ -29,6 +29,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Tests des conversations
+        run: flutter test
+
       - name: Analyze (non bloquant)
         run: flutter analyze || true
 

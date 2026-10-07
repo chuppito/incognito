@@ -47,6 +47,11 @@ String _normalizeName(String value) {
 /// - si aucun nom exploitable n'est disponible, conversationKey est utilisé ;
 /// - les conversations restent ordonnées selon leur dernière notification.
 List<ConversationSummary> buildConversations(List<NotificationItem> items) {
+  items = List.of(items)
+    ..sort((a, b) {
+      final time = b.timestamp.compareTo(a.timestamp);
+      return time != 0 ? time : b.id.compareTo(a.id);
+    });
   final nameKeys = <String, Set<String>>{};
 
   for (final item in items) {
@@ -57,7 +62,8 @@ List<ConversationSummary> buildConversations(List<NotificationItem> items) {
     if (normalizedName.isEmpty) continue;
 
     final base = '${item.packageName}|name:$normalizedName';
-    final conversationKey = item.conversationKey.trim();
+    final rawKey = item.conversationKey.trim();
+    final conversationKey = rawKey.contains('|group:') ? '' : rawKey;
 
     if (conversationKey.isNotEmpty) {
       nameKeys.putIfAbsent(base, () => <String>{}).add(conversationKey);
@@ -76,7 +82,8 @@ List<ConversationSummary> buildConversations(List<NotificationItem> items) {
     final normalizedName = _normalizeName(name);
     final base = '${item.packageName}|name:$normalizedName';
     final keys = nameKeys[base] ?? <String>{};
-    final conversationKey = item.conversationKey.trim();
+    final rawKey = item.conversationKey.trim();
+    final conversationKey = rawKey.contains('|group:') ? '' : rawKey;
 
     String key;
     if (normalizedName.isNotEmpty && keys.length <= 1) {

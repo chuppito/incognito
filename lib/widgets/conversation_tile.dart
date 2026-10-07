@@ -33,9 +33,9 @@ class ConversationTile extends StatelessWidget {
       ),
       subtitle: Text(
         latest.text.isNotEmpty
-            ? '${conversation.appName} • ${latest.text}'
+            ? '${conversation.appName} • ${latest.sender.isEmpty ? '' : '${latest.sender} : '}${latest.text}'
             : '${conversation.appName} • (Notification sans texte)',
-        maxLines: 1,
+        maxLines: 2,
         overflow: TextOverflow.ellipsis,
       ),
       trailing: Column(

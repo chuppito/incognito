@@ -17,7 +17,7 @@ class NotificationStore(context: Context) :
 
     companion object {
         private const val DB_NAME = "incognito_notifications.db"
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
         private const val TABLE = "notifications"
 
         @Volatile
@@ -39,10 +39,13 @@ class NotificationStore(context: Context) :
                 title TEXT,
                 text TEXT,
                 timestamp INTEGER NOT NULL,
-                conversation_key TEXT
+                conversation_key TEXT,
+                sender TEXT,
+                message_key TEXT
             )
             """.trimIndent()
         )
+        db.execSQL("CREATE UNIQUE INDEX idx_notifications_message ON $TABLE(message_key)")
         db.execSQL("CREATE INDEX idx_notifications_timestamp ON $TABLE(timestamp DESC)")
         db.execSQL("CREATE INDEX idx_notifications_conversation ON $TABLE(conversation_key)")
     }
@@ -52,6 +55,11 @@ class NotificationStore(context: Context) :
             db.execSQL("ALTER TABLE $TABLE ADD COLUMN conversation_key TEXT")
             db.execSQL("CREATE INDEX idx_notifications_conversation ON $TABLE(conversation_key)")
         }
+        if (oldVersion < 3) {
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN sender TEXT")
+            db.execSQL("ALTER TABLE $TABLE ADD COLUMN message_key TEXT")
+            db.execSQL("CREATE UNIQUE INDEX idx_notifications_message ON $TABLE(message_key)")
+        }
     }
 
     fun insert(
@@ -60,7 +68,9 @@ class NotificationStore(context: Context) :
         title: String?,
         text: String?,
         timestamp: Long,
-        conversationKey: String? = null
+        conversationKey: String? = null,
+        sender: String? = null,
+        messageKey: String? = null
     ): Long {
         val values = ContentValues().apply {
             put("package_name", packageName)
@@ -69,8 +79,10 @@ class NotificationStore(context: Context) :
             put("text", text ?: "")
             put("timestamp", timestamp)
             put("conversation_key", conversationKey ?: "")
+            put("sender", sender ?: "")
+            put("message_key", messageKey)
         }
-        return writableDatabase.insert(TABLE, null, values)
+        return writableDatabase.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_IGNORE)
     }
 
     fun getHistory(limit: Int, offset: Int): List<Map<String, Any?>> {
@@ -89,7 +101,8 @@ class NotificationStore(context: Context) :
                         "title" to it.getString(it.getColumnIndexOrThrow("title")),
                         "text" to it.getString(it.getColumnIndexOrThrow("text")),
                         "timestamp" to it.getLong(it.getColumnIndexOrThrow("timestamp")),
-                        "conversationKey" to it.getString(it.getColumnIndexOrThrow("conversation_key"))
+                        "conversationKey" to it.getString(it.getColumnIndexOrThrow("conversation_key")),
+                        "sender" to it.getString(it.getColumnIndexOrThrow("sender"))
                     )
                 )
             }
