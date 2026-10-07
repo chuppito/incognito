@@ -1,3 +1,9 @@
+## Incognito 2.0.1 — présentation des groupes
+
+Le groupe conserve son nom dans la liste et dans l’en-tête du fil. Les messages sont présentés dans des bulles blanches sur fond beige, avec le nom coloré de l’expéditeur, une initiale et l’heure en bas à droite. La recherche est accessible depuis l’en-tête ; la copie et la suppression par appui long sur une bulle. Le thème sombre est conservé.
+
+Les initiales remplacent les portraits non fournis par les notifications. Les informations de présence, réactions et accusés de lecture ne sont pas disponibles et ne sont pas affichées.
+
 ## Incognito 2.0.0 — conversations
 
 - Les notifications Android MessagingStyle sont enregistrées message par message, avec expéditeur et heure fournis par Android.

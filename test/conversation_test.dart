@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:incognito/models/conversation_summary.dart';
 import 'package:incognito/models/notification_item.dart';
 import 'package:incognito/screens/conversation_thread_screen.dart';
+import 'package:incognito/widgets/message_bubble.dart';
 
 NotificationItem message(int id, {String sender = 'Marie', String text = 'Bonjour',
   String package = 'com.whatsapp', String key = 'group-a', int minute = 0}) => NotificationItem(
@@ -40,11 +41,15 @@ void main() {
     ]).single;
     await tester.pumpWidget(MaterialApp(home: ConversationThreadScreen(
       conversation: conversation, appIcon: null)));
+    expect(find.byType(MessageBubble), findsNWidgets(2));
     expect(find.text('Marie'), findsOneWidget);
     expect(find.text('Paul'), findsOneWidget);
     expect(find.text('Bonjour\nDeuxième ligne'), findsOneWidget);
     expect(find.text('Bonsoir'), findsOneWidget);
-    expect(find.text('WhatsApp • 2 messages'), findsOneWidget);
+    expect(find.text('Mon groupe'), findsOneWidget);
+    expect(find.text('WhatsApp'), findsOneWidget);
+    await tester.tap(find.byTooltip('Rechercher dans la conversation'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Paul');
     await tester.pump();
     expect(find.text('Bonsoir'), findsOneWidget);

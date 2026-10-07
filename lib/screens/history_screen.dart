@@ -226,7 +226,7 @@ class _HistoryScreenState extends State<HistoryScreen> with WidgetsBindingObserv
       appBar: AppBar(
         title: const Text('Incognito'),
         bottom: const PreferredSize(preferredSize: Size.fromHeight(20),
-          child: Padding(padding: EdgeInsets.only(bottom: 8), child: Text('Version 2.0.0'))),
+          child: Padding(padding: EdgeInsets.only(bottom: 8), child: Text('Version 2.0.1'))),
         actions: [
           IconButton(
             icon: const Icon(Icons.tune),

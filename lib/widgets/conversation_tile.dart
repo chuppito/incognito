@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models/conversation_summary.dart';
 import '../utils/relative_time.dart';
+import 'conversation_avatar.dart';
 
 class ConversationTile extends StatelessWidget {
   final ConversationSummary conversation;
@@ -24,7 +25,7 @@ class ConversationTile extends StatelessWidget {
 
     return ListTile(
       onTap: onTap,
-      leading: _buildAvatar(context),
+      leading: ConversationAvatar(name: conversation.contactName, appIcon: appIcon),
       title: Text(
         conversation.contactName,
         maxLines: 1,
@@ -69,35 +70,4 @@ class ConversationTile extends StatelessWidget {
     );
   }
 
-  Widget _buildAvatar(BuildContext context) {
-    if (appIcon != null) {
-      return ClipOval(
-        child: Image.memory(
-          appIcon!,
-          width: 48,
-          height: 48,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _letterAvatar(context),
-        ),
-      );
-    }
-    return _letterAvatar(context);
-  }
-
-  Widget _letterAvatar(BuildContext context) {
-    return CircleAvatar(
-      radius: 24,
-      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-      child: Text(
-        conversation.contactName.isNotEmpty
-            ? conversation.contactName[0].toUpperCase()
-            : '?',
-        style: TextStyle(
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onPrimaryContainer,
-        ),
-      ),
-    );
-  }
 }
-
